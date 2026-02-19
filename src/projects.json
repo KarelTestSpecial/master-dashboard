@@ -1,0 +1,26 @@
+[
+  {
+    "id": "aiga",
+    "name": "KarelsAssistant (AIGA)",
+    "location": "~/karelsassistant",
+    "goal": "Autonome inkomsten-zoeker en QA-loop engine.",
+    "serviceNames": ["aiga-api"],
+    "links": [{ "label": "Dashboard", "url": "http://localhost:8001" }]
+  },
+  {
+    "id": "clawwork",
+    "name": "ClawWork (Benchmark)",
+    "location": "~/clawwork",
+    "goal": "AI Coworker economische survival simulatie.",
+    "serviceNames": ["clawwork-frontend", "clawwork-backend", "clawwork-mcp"],
+    "links": [{ "label": "Dashboard", "url": "http://localhost:3000" }]
+  },
+  {
+    "id": "waterfall",
+    "name": "Central AI Waterfall",
+    "location": "~/karelsassistant/central-ai-waterfall",
+    "goal": "Gecentraliseerde AI fallback service (OpenAI compatibel).",
+    "serviceNames": ["central-ai-waterfall"],
+    "links": [{ "label": "Health Check", "url": "http://localhost:5005/health" }]
+  }
+]
