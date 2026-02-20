@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Rocket, 
-  Terminal, 
-  Layers, 
-  ExternalLink, 
-  Activity, 
+import {
+  Rocket,
+  Terminal,
+  Layers,
+  ExternalLink,
+  Activity,
   Layout,
   Play,
   Square,
@@ -40,6 +40,7 @@ interface PmctlProject {
   tech: string;
   path: string;
   status: string;
+  category?: string;
   ports: number[];
   open_ports: number[];
   memory_mb: number;
@@ -65,18 +66,15 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [processing, setProcessing] = useState<{[key: string]: string | null}>({});
-  
+
   const host = window.location.hostname || 'localhost';
 
   const fetchRegistry = useCallback(async () => {
     try {
-      // 1. Fetch Port Registry
       const regRes = await fetch(`http://${host}:4444/ports`);
       if (regRes.ok) {
         setRegistry(await regRes.json());
       }
-
-      // 2. Fetch Projects from pmctl
       const projRes = await fetch(`http://${host}:7777/api/projects`);
       if (projRes.ok) {
         setProjects(await projRes.json());
@@ -94,19 +92,55 @@ function App() {
 
   useEffect(() => {
     fetchRegistry();
-    const interval = setInterval(fetchRegistry, 5000);
-    return () => clearInterval(interval);
   }, [fetchRegistry]);
+
+  const handleDelete = async (projectId: string) => {
+    if (!confirm(`"${projectId}" verwijderen uit het dashboard?`)) return;
+    await fetch(`http://${host}:7777/api/projects/${projectId}`, { method: 'DELETE' });
+    await fetchRegistry();
+  };
+
+  const handleAddProject = async () => {
+    if (!newProject.name || !newProject.location) return;
+    const res = await fetch(`http://${host}:7777/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newProject.name,
+        path: newProject.location,
+        description: newProject.goal,
+        tech: newProject.tech,
+        category: newProject.category,
+        start_script: newProject.startScript || null,
+        pm2_name: newProject.pm2Name || null,
+        serviceName: newProject.serviceName,
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      setShowAddModal(false);
+      setNewProject({ name: '', location: '', goal: '', tech: '', category: 'agent', startScript: '', pm2Name: '', serviceName: '', preferredPort: '' });
+      await fetchRegistry();
+    } else {
+      alert(data.message);
+    }
+  };
+
+  const handlePm2All = async (action: 'stop-all' | 'start-all') => {
+    if (!confirm(action === 'stop-all' ? 'Alle PM2 processen stoppen?' : 'Alle PM2 processen starten?')) return;
+    await fetch(`http://${host}:7777/api/pm2/${action}`, { method: 'POST' });
+    setTimeout(fetchRegistry, 1500);
+  };
 
   const handleAction = async (projectId: string, action: 'start' | 'stop' | 'restart' | 'sync') => {
     setProcessing(prev => ({ ...prev, [projectId]: action }));
-    
+
     try {
       const res = await fetch(`http://${host}:7777/api/projects/${projectId}/${action}`, {
         method: 'POST'
       });
       const data = await res.json();
-      
+
       if (action === 'sync') {
         if (data.success) {
           alert(`Sync succesvol voor ${projectId}`);
@@ -114,8 +148,7 @@ function App() {
           alert(`Sync mislukt voor ${projectId}: ${data.message}`);
         }
       }
-      
-      // Poll a few times after action
+
       let attempts = 0;
       const poll = async () => {
         attempts++;
@@ -125,7 +158,7 @@ function App() {
         if (action === 'stop') isDone = currentProject?.status === 'stopped';
         if (action === 'start') isDone = currentProject?.status === 'running';
         if (action === 'sync') isDone = !currentProject?.git?.is_dirty;
-        
+
         if (isDone || attempts >= 10) {
           setProcessing(prev => ({ ...prev, [projectId]: null }));
         } else {
@@ -138,26 +171,112 @@ function App() {
     }
   };
 
-  // New project form state
   const [newProject, setNewProject] = useState({
     name: '',
     location: '',
     goal: '',
+    tech: '',
+    category: 'agent',
+    startScript: '',
+    pm2Name: '',
     serviceName: '',
     preferredPort: ''
   });
+
+  const renderCard = (id: string, project: PmctlProject) => {
+    const status = project.status === 'running' ? 'online' : 'offline';
+    const isStopping = processing[id] === 'stop' && status === 'online';
+
+    return (
+      <div key={id} className="project-card">
+        <div className="card-header">
+          <div className="title-group">
+            <h3>{project.name}</h3>
+            <div className="ports-row">
+              {project.ports.map(p => (
+                <span key={p} className={`port-tag ${project.open_ports.includes(p) ? 'active' : ''}`}>:{p}</span>
+              ))}
+              {project.ports.length === 0 && status === 'online' && (
+                <span className="port-tag bg-tag">
+                  {project.tech?.toLowerCase().includes('bash') ? 'bg bash loop' : 'achtergrond'}
+                </span>
+              )}
+            </div>
+          </div>
+          <button className="btn-icon" onClick={() => handleDelete(id)} title="Verwijder uit dashboard">
+            <X size={14} />
+          </button>
+          <div
+            className={`status-badge ${isStopping ? 'stopping' : status}${status === 'online' && !isStopping && project.open_ports.length > 0 ? ' clickable' : ''}`}
+            onClick={() => {
+              if (status === 'online' && !isStopping && project.open_ports.length > 0) {
+                window.open(`http://${host}:${project.open_ports[0]}`, '_blank');
+              }
+            }}
+            title={status === 'online' && !isStopping && project.open_ports.length > 0 ? `Open op :${project.open_ports[0]}` : undefined}
+          >
+            {isStopping ? 'STOPPING' : status.toUpperCase()}
+          </div>
+        </div>
+
+        <p className="goal">{project.description || "Geen beschrijving"}</p>
+
+        <div className="project-stats">
+          <div className="mini-stat">
+            <Cpu size={12} /> {project.memory_mb > 0 ? `${project.memory_mb} MB` : '—'}
+          </div>
+          <div className="mini-stat">
+            <HardDrive size={12} /> {project.disk_usage}
+          </div>
+          <div className="tech-tag">{project.tech}</div>
+        </div>
+
+        <div className="location">
+          <Folder size={14} /> <code>{project.path}</code>
+        </div>
+
+        <div className="actions">
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => handleAction(id, 'start')}
+            disabled={status === 'online' || !!processing[id]}
+          >
+            {processing[id] === 'start' ? <RefreshCw size={14} className="spin" /> : <Play size={14} />} Start
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleAction(id, 'stop')}
+            disabled={status === 'offline' || !!processing[id]}
+          >
+            {processing[id] === 'stop' ? <RefreshCw size={14} className="spin" /> : <Square size={14} />} Stop
+          </button>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => handleAction(id, 'restart')}
+            disabled={!!processing[id]}
+          >
+            <RefreshCw size={14} className={processing[id] === 'restart' ? 'spin' : ''} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const agents = Object.entries(projects).filter(([_, p]) => p.category === 'agent');
+  const infra  = Object.entries(projects).filter(([_, p]) => p.category === 'infra');
+  const uncategorized = Object.entries(projects).filter(([_, p]) => !p.category);
 
   return (
     <div className="dashboard">
       <header className="header">
         <div className="logo">
           <Layers size={32} color="#4f46e5" />
-          <h1>MASTER DASHBOARD</h1>
+          <h1>KDC DASHBOARD</h1>
         </div>
         <div className="header-actions">
           <div className="system-health">
             <Activity size={18} />
-            <span>{loading ? 'Connecting...' : (error ? 'System Sync Error' : 'All Systems Linked')}</span>
+            <span>{loading ? 'Verbinden...' : (error ? 'Verbindingsfout' : 'Alle systemen actief')}</span>
             <div className={`status-dot ${loading ? 'yellow' : (error ? 'red' : 'green')}`}></div>
           </div>
         </div>
@@ -165,7 +284,7 @@ function App() {
 
       <nav className="sidebar">
         <button className={activeTab === 'projects' ? 'active' : ''} onClick={() => setActiveTab('projects')}>
-          <Rocket size={20} /> Projecten
+          <Rocket size={20} /> PM2 Overzicht
         </button>
         <button className={activeTab === 'git' ? 'active' : ''} onClick={() => setActiveTab('git')}>
           <Github size={20} /> GitHub Sync
@@ -177,7 +296,7 @@ function App() {
           <CheckCircle size={20} /> SOP / AI Rules
         </button>
         <div className="sidebar-footer">
-          <div className="version">v1.5.0 (Git Edition)</div>
+          <div className="version">v2.0.0 (KDC Edition)</div>
         </div>
       </nav>
 
@@ -187,73 +306,45 @@ function App() {
         {activeTab === 'projects' && (
           <div className="view">
             <div className="header-row">
-              <h2 className="section-title">Mijn Ecosysteem</h2>
-              <button className="btn btn-outline btn-sm" onClick={fetchRegistry}><RefreshCw size={14} /> Sync</button>
+              <h2 className="section-title">KDC Ecosysteem</h2>
+              <button className="btn btn-outline btn-sm" onClick={fetchRegistry} title="Herlaad projectdata van pmctl"><RefreshCw size={14} /> Reload</button>
+              <button className="btn btn-danger btn-sm" onClick={() => handlePm2All('stop-all')} title="pm2 stop all — stopt alle achtergrondprocessen"><Square size={14} /> Stop All</button>
+              <button className="btn btn-success btn-sm" onClick={() => handlePm2All('start-all')} title="pm2 start all — herstart alle gestopte processen"><Play size={14} /> Start All</button>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)} title="Voeg een nieuw project toe aan het dashboard"><PlusCircle size={14} /> Project</button>
             </div>
-            <div className="project-grid">
-              {Object.entries(projects).map(([id, project]) => {
-                const status = project.status === 'running' ? 'online' : 'offline';
-                const isStopping = processing[id] === 'stop' && status === 'online';
-                
-                return (
-                  <div key={id} className="project-card">
-                    <div className="card-header">
-                      <div className="title-group">
-                        <h3>{project.name}</h3>
-                        <div className="ports-row">
-                          {project.ports.map(p => (
-                            <span key={p} className={`port-tag ${project.open_ports.includes(p) ? 'active' : ''}`}>:{p}</span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={`status-badge ${isStopping ? 'stopping' : status}`}>
-                        {isStopping ? 'STOPPING' : status.toUpperCase()}
-                      </div>
-                    </div>
-                    
-                    <p className="goal">{project.description || "Geen beschrijving"}</p>
-                    
-                    <div className="project-stats">
-                      <div className="mini-stat">
-                        <Cpu size={12} /> {project.memory_mb > 0 ? `${project.memory_mb} MB` : '—'}
-                      </div>
-                      <div className="mini-stat">
-                        <HardDrive size={12} /> {project.disk_usage}
-                      </div>
-                      <div className="tech-tag">{project.tech}</div>
-                    </div>
 
-                    <div className="location">
-                      <Folder size={14} /> <code>{project.path}</code>
-                    </div>
-                    
-                    <div className="actions">
-                      <button 
-                        className="btn btn-primary btn-sm" 
-                        onClick={() => handleAction(id, 'start')}
-                        disabled={status === 'online' || !!processing[id]}
-                      >
-                        {processing[id] === 'start' ? <RefreshCw size={14} className="spin" /> : <Play size={14} />} Start
-                      </button>
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleAction(id, 'stop')}
-                        disabled={status === 'offline' || !!processing[id]}
-                      >
-                        {processing[id] === 'stop' ? <RefreshCw size={14} className="spin" /> : <Square size={14} />} Stop
-                      </button>
-                      <button 
-                        className="btn btn-outline btn-sm"
-                        onClick={() => handleAction(id, 'restart')}
-                        disabled={!!processing[id]}
-                      >
-                        <RefreshCw size={14} className={processing[id] === 'restart' ? 'spin' : ''} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {agents.length > 0 && (
+              <div className="project-section">
+                <div className="section-label">
+                  <Rocket size={14} /> AGENTS
+                </div>
+                <div className="project-grid">
+                  {agents.map(([id, project]) => renderCard(id, project))}
+                </div>
+              </div>
+            )}
+
+            {infra.length > 0 && (
+              <div className="project-section">
+                <div className="section-label">
+                  <Terminal size={14} /> INFRASTRUCTUUR
+                </div>
+                <div className="project-grid">
+                  {infra.map(([id, project]) => renderCard(id, project))}
+                </div>
+              </div>
+            )}
+
+            {uncategorized.length > 0 && (
+              <div className="project-section">
+                <div className="section-label">
+                  <HelpCircle size={14} /> OVERIG
+                </div>
+                <div className="project-grid">
+                  {uncategorized.map(([id, project]) => renderCard(id, project))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -278,7 +369,7 @@ function App() {
                       <GitBranch size={14} /> {project.git?.branch || '—'}
                     </div>
                   </div>
-                  
+
                   <div className="git-body">
                     <div className="git-remote">
                       <ExternalLink size={12} /> <code>{project.git?.remote || 'Geen remote'}</code>
@@ -291,7 +382,7 @@ function App() {
                   </div>
 
                   <div className="git-actions">
-                    <button 
+                    <button
                       className="btn btn-primary btn-sm btn-full"
                       onClick={() => handleAction(id, 'sync')}
                       disabled={!project.git?.is_repo || !project.git?.is_dirty || !!processing[id]}
@@ -352,6 +443,36 @@ function App() {
           </div>
         )}
       </main>
+
+      {showAddModal && (
+        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Project toevoegen</h3>
+              <button className="btn-icon" onClick={() => setShowAddModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <label>Naam *<input className="input" placeholder="bv. mijn-api" value={newProject.name} onChange={e => setNewProject(p => ({...p, name: e.target.value}))} /></label>
+              <label>Pad *<input className="input" placeholder="/home/kareltestspecial/KDC/..." value={newProject.location} onChange={e => setNewProject(p => ({...p, location: e.target.value}))} /></label>
+              <label>Beschrijving<input className="input" placeholder="Wat doet dit project?" value={newProject.goal} onChange={e => setNewProject(p => ({...p, goal: e.target.value}))} /></label>
+              <label>Tech<input className="input" placeholder="bv. Python (FastAPI)" value={newProject.tech} onChange={e => setNewProject(p => ({...p, tech: e.target.value}))} /></label>
+              <label>Categorie
+                <select className="input" value={newProject.category} onChange={e => setNewProject(p => ({...p, category: e.target.value}))}>
+                  <option value="agent">Agent</option>
+                  <option value="infra">Infrastructuur</option>
+                </select>
+              </label>
+              <label>Start script<input className="input" placeholder="bv. node launch.js" value={newProject.startScript} onChange={e => setNewProject(p => ({...p, startScript: e.target.value}))} /></label>
+              <label>PM2 naam<input className="input" placeholder="bv. mijn-api (leeg = geen PM2)" value={newProject.pm2Name} onChange={e => setNewProject(p => ({...p, pm2Name: e.target.value}))} /></label>
+              <label>Service naam<input className="input" placeholder="bv. mijn-api (voor port registry)" value={newProject.serviceName} onChange={e => setNewProject(p => ({...p, serviceName: e.target.value}))} /></label>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline btn-sm" onClick={() => setShowAddModal(false)}>Annuleer</button>
+              <button className="btn btn-primary btn-sm" onClick={handleAddProject} disabled={!newProject.name || !newProject.location}>Toevoegen</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
