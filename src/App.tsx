@@ -44,6 +44,7 @@ interface PmctlProject {
   ports: number[];
   open_ports: number[];
   memory_mb: number;
+  cpu_percent: number;
   disk_usage: string;
   token_usage: number;
   relations: string[];
@@ -62,6 +63,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('projects');
   const [registry, setRegistry] = useState<PortRegistry>({});
   const [projects, setProjects] = useState<{[key: string]: PmctlProject}>({});
+  const [systemStats, setSystemStats] = useState<{cpu_total: number, memory: {percent: number}} | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -76,6 +78,12 @@ function App() {
       if (regRes.ok) {
         setRegistry(await regRes.json());
       }
+      
+      const sysRes = await fetch(`http://${host}:7777/api/system/stats`);
+      if (sysRes.ok) {
+        setSystemStats(await sysRes.json());
+      }
+
       const projRes = await fetch(`http://${host}:7777/api/projects`);
       if (projRes.ok) {
         setProjects(await projRes.json());
@@ -223,10 +231,13 @@ function App() {
         <p className="goal">{project.description || "Geen beschrijving"}</p>
 
         <div className="project-stats">
-          <div className="mini-stat">
-            <Cpu size={12} /> {project.memory_mb > 0 ? `${project.memory_mb} MB` : '—'}
+          <div className="mini-stat" title="CPU Gebruik">
+            <Cpu size={12} /> {project.status === 'running' ? `${project.cpu_percent}%` : '—'}
           </div>
-          <div className="mini-stat">
+          <div className="mini-stat" title="Geheugen">
+            <Layers size={12} /> {project.memory_mb > 0 ? `${project.memory_mb} MB` : '—'}
+          </div>
+          <div className="mini-stat" title="Schijfgebruik">
             <HardDrive size={12} /> {project.disk_usage}
           </div>
           <div className="tech-tag">{project.tech}</div>
@@ -275,6 +286,18 @@ function App() {
           <h1>KDC DASHBOARD</h1>
         </div>
         <div className="header-actions">
+          {systemStats && (
+            <div className="system-metrics">
+              <div className="metric" title="Totale CPU Belasting">
+                <Cpu size={14} />
+                <span>CPU: {systemStats.cpu_total}%</span>
+              </div>
+              <div className="metric" title="Systeemgeheugen in gebruik">
+                <Layers size={14} />
+                <span>RAM: {systemStats.memory.percent}%</span>
+              </div>
+            </div>
+          )}
           <div className="system-health">
             <Activity size={18} />
             <span>{loading ? 'Verbinden...' : (error ? 'Verbindingsfout' : 'Alle systemen actief')}</span>
