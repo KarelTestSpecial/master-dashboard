@@ -1,5 +1,5 @@
 :root {
-  --sidebar-width: 260px;
+  --sidebar-width: clamp(180px, 15vw, 220px);
   --header-height: 70px;
   --bg-color: #f8fafc;
   --sidebar-bg: #1e293b;
@@ -981,4 +981,67 @@ body {
   justify-content: flex-end;
   gap: 8px;
   border-top: 1px solid var(--border-color);
+}
+
+/* Button groups */
+.button-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-icon.btn-help {
+  color: var(--text-light);
+  background: transparent;
+  padding: 8px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.btn-icon.btn-help:hover {
+  background: #f1f5f9;
+  color: var(--primary);
+}
+
+.command-block {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.command-block label {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.command-block code {
+  color: #38bdf8;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.875rem;
+}
+
+.modal-footer-note {
+  font-size: 0.825rem;
+  color: var(--text-light);
+  margin-top: 16px;
+  font-style: italic;
+}
+
+.emergency-modal {
+  border-top: 4px solid #ef4444 !important;
+}
+
+.btn-warning {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #d97706;
 }

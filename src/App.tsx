@@ -65,6 +65,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [processing, setProcessing] = useState<{[key: string]: string | null}>({});
 
   const host = window.location.hostname || 'localhost';
@@ -307,10 +308,14 @@ function App() {
           <div className="view">
             <div className="header-row">
               <h2 className="section-title">KDC Ecosysteem</h2>
-              <button className="btn btn-outline btn-sm" onClick={fetchRegistry} title="Herlaad projectdata van pmctl"><RefreshCw size={14} /> Reload</button>
-              <button className="btn btn-danger btn-sm" onClick={() => handlePm2All('stop-all')} title="pm2 stop all — stopt alle achtergrondprocessen"><Square size={14} /> Stop All</button>
-              <button className="btn btn-success btn-sm" onClick={() => handlePm2All('start-all')} title="pm2 start all — herstart alle gestopte processen"><Play size={14} /> Start All</button>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)} title="Voeg een nieuw project toe aan het dashboard"><PlusCircle size={14} /> Project</button>
+              <div className="button-group">
+                <button className="btn btn-outline btn-sm" onClick={fetchRegistry} title="Herlaad projectdata van pmctl"><RefreshCw size={14} /> Reload</button>
+                <button className="btn btn-warning btn-sm" onClick={() => handlePm2All('stop-all')} title="Stopt alleen de agents (dashboard blijft actief)"><Square size={14} /> Stop Agents</button>
+                <button className="btn btn-danger btn-sm" onClick={() => { if(confirm('Systeem volledig afsluiten? Dashboard wordt onbereikbaar.')) fetch(`http://${host}:7777/api/pm2/shutdown`, {method: 'POST'}) }} title="Full System Stop — stopt alles inclusief dashboard"><AlertCircle size={14} /> Full Shutdown</button>
+                <button className="btn btn-success btn-sm" onClick={() => handlePm2All('start-all')} title="pm2 start all — herstart alle gestopte processen"><Play size={14} /> Start All</button>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)} title="Voeg een nieuw project toe aan het dashboard"><PlusCircle size={14} /> Project</button>
+                <button className="btn btn-icon btn-help" onClick={() => setShowEmergencyModal(true)} title="Nood-instructies voor de terminal"><HelpCircle size={18} /></button>
+              </div>
             </div>
 
             {agents.length > 0 && (
@@ -469,6 +474,39 @@ function App() {
             <div className="modal-footer">
               <button className="btn btn-outline btn-sm" onClick={() => setShowAddModal(false)}>Annuleer</button>
               <button className="btn btn-primary btn-sm" onClick={handleAddProject} disabled={!newProject.name || !newProject.location}>Toevoegen</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showEmergencyModal && (
+        <div className="modal-overlay" onClick={() => setShowEmergencyModal(false)}>
+          <div className="modal emergency-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>🚨 Nood-instructies (Terminal)</h3>
+              <button className="btn-icon" onClick={() => setShowEmergencyModal(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <p>Mocht het dashboard niet reageren of een proces (zoals port-registry) 100% CPU verbruiken, gebruik dan de volgende commando's in de terminal:</p>
+              
+              <div className="command-block">
+                <label>Alles stoppen (PM2):</label>
+                <code>pm2 stop all && pm2 kill</code>
+              </div>
+
+              <div className="command-block">
+                <label>Forceer stop Port Registry (bij 100% CPU):</label>
+                <code>pkill -9 -f "port-registry"</code>
+              </div>
+
+              <div className="command-block">
+                <label>Forceer stop alle Python/Node processen:</label>
+                <code>pkill -9 -f "python" && pkill -9 -f "node"</code>
+              </div>
+              
+              <p className="modal-footer-note">Herstart het systeem handmatig via: <code>~/start-assistant.sh</code> (indien geconfigureerd) of per project via <code>pmctl web</code>.</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary btn-sm" onClick={() => setShowEmergencyModal(false)}>Begrepen</button>
             </div>
           </div>
         </div>
